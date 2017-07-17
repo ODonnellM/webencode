@@ -41,7 +41,12 @@ def main():
 
 def transcode(source):
     for encode in OPTS:
-        call_ffmpeg(0, [source, encode[0], '%sx%s'%(encode[1],encode[2]), 'new.%s'%(encode[2]) ])
+        params = [source, encode[0], '%sx%s'%(encode[1],encode[2]), 'new.%s'%(encode[2]) ]
+        print params
+        call_ffmpeg(0, params)
+        call_ffmpeg(1, params)
+        call_ffmpeg(2, params)
+        
     
 def init_opts(source):
     # changes resolutions and bit rates according to what format the video is already in
@@ -55,12 +60,16 @@ def init_opts(source):
 
             break
 
+    
     for encoder in OPTS:
-        if bitrate < encoder[0]*1000:
-            encoder[0] = bitrate//1000
+        if bitrate != 0:
+            if bitrate < encoder[0]*1000:
+                encoder[0] = bitrate//1000
 
-        encoder[1] = int(encoder[2] * a_ratio)
-
+        if a_ratio != 0:
+            encoder[1] = int(encoder[2] * a_ratio)
+            if encoder[1]%2 != 0: encoder[1] += 1
+        
 def get_video():
     # validates command line args
     if len(sys.argv) < 2:
