@@ -1,0 +1,98 @@
+#!/usr/bin/python
+
+# Script for transcoding video files to several web acceptable
+# formats/bitrates/resolutions
+
+# NOTES:
+# + To determine what to transcode to, use a sort of "checkbox"
+# - whereby anything that is False when checked should be transcoded
+# - to, anything that is True should be considered done/not needed
+
+import sys, os
+import subprocess as subproc
+from ffprobe import FFProbe as ffprobe
+
+CALLS = [
+    "ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner",
+    "ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner",
+    "ffmpeg2theora {0} -o {3}.ogv --max_size {2} -V {1}k -A 128k"
+]
+ERRORS = [
+    ("Missing filename argument", True),
+    ("Could not locate file '{}'", True),
+    ("Could not transcode to '.{}'", False)
+]
+OPTS = [
+    [True, None, '2000k', '1920x1080', None],
+    [True, None, '1200k', '1280x720',  None],
+    [True, None, '700k',  '853x480',   None]
+]
+
+def main():
+    #get/validate vid name
+    source = get_video()
+
+    init_opts(source)
+
+    print 'Processing to mp4 1080p\n'
+    #call_ffmpeg(0, OPTS[
+
+    # print 'Processing to webm 1080p\n'
+    # call_ffmpeg(1, [source, '2000', '1920x1080', 'new.1080'])
+
+    # print 'Processing to ogv 1080p\n'
+    # call_ffmpeg(2, [source, 'new.1080', '1920', '1080', '2000'])
+
+    print 'Transcoding complete'
+
+def init_opts(source):
+    data = ffprobe(source)
+
+    for stream in data.streams:
+        if stream.isVideo():
+            current = [
+                stream.frameSize(),
+                stream.codec(),
+                stream.bitrate()
+            ]
+
+    print current
+
+def get_video():
+    # validates command line args
+    if len(sys.argv) < 2:
+        error(0)
+
+    video_name = sys.argv[1]
+
+    if not os.path.isfile(video_name): error(1, video_name)
+
+    return video_name
+
+
+def call_ffmpeg(id, opts):
+    cmd = CALLS[id].format(*opts)
+
+    try:
+        subproc.call(cmd ,shell=True)
+    except:
+        error(2, ext)
+
+#def transcode
+
+def error(id, insert=None):
+    #insert must be a list or tuple to avoid weird error printing
+    if insert:
+        if insert is not list or insert is not tuple:
+            insert = [insert]
+
+    msg = ERRORS[id][0]; msg = msg.format(*insert) if insert else msg
+
+    print '\nERROR: %s\n' % msg
+
+    if ERRORS[id][1]:
+        sys.exit()
+
+
+if __name__ == "__main__":
+    main()
