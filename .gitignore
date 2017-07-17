@@ -1,3 +1,4 @@
 *
+.gitignore
 !web-encode
 !README.md
