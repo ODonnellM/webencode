@@ -23,11 +23,22 @@ ERRORS = [
     ("Could not locate file '{}'", True),
     ("Could not transcode to '.{}'", False)
 ]
-OPTS = [
-    [True, None, '2000k', '1920x1080', None],
-    [True, None, '1200k', '1280x720',  None],
-    [True, None, '700k',  '853x480',   None]
-]
+OPTS = {
+    'input'  : None,
+    'output' : None,
+
+    'codecs' : {
+        'mp4' : True,
+        'webm': True,
+        'ogv' : True
+    },
+
+    'encode' : [
+        ['2000k', '1920x1080'],
+        ['1200k', '1280x720' ],
+        ['700k',  '853x480'  ]
+    ]
+}
 
 def main():
     #get/validate vid name
@@ -35,16 +46,6 @@ def main():
 
     init_opts(source)
 
-    print 'Processing to mp4 1080p\n'
-    #call_ffmpeg(0, OPTS[
-
-    # print 'Processing to webm 1080p\n'
-    # call_ffmpeg(1, [source, '2000', '1920x1080', 'new.1080'])
-
-    # print 'Processing to ogv 1080p\n'
-    # call_ffmpeg(2, [source, 'new.1080', '1920', '1080', '2000'])
-
-    print 'Transcoding complete'
 
 def init_opts(source):
     data = ffprobe(source)
@@ -56,8 +57,10 @@ def init_opts(source):
                 stream.codec(),
                 stream.bitrate()
             ]
+        break
 
-    print current
+
+
 
 def get_video():
     # validates command line args
