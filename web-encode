@@ -1,8 +1,5 @@
 #!/usr/bin/python
 
-# ADDITION
-
-
 # Script for transcoding video files to several web acceptable
 # formats/bitrates/resolutions
 
@@ -15,6 +12,7 @@ import sys, os
 import subprocess as subproc
 from ffprobe import FFProbe as ffprobe
 
+# Change this for security purposes
 CALLS = [
     "ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner",
     "ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner",
