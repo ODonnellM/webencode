@@ -7,21 +7,24 @@ from __future__ import division
 from ffprobe import FFProbe as ffprobe
 import subprocess as subproc
 import sys, os
-    
+
 def main():
     encoder = Encoder()
 
-    
+
 # ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner
 # ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner
 # ffmpeg2theora {0} -o {3}.ogv --max_size {2} -V {1}k -A 128k
 
 class Encoder(object):
     def __init__(self):
+        self._error = Error()
+
         self._set_bit = True
         self._set_res = True
-        
-        self._options = [ #[bitrate, x_res, y_res]
+
+        self._options = [
+            #[bitrate, x_res, y_res]
             [2000, 1920, 1080],
             [1200, 1280, 720 ],
             [700,  853, 480  ]
@@ -43,11 +46,11 @@ class Encoder(object):
                 break #break on first video stream
 
         if self._bitrate == 0:
-            error(3, ['bitrate', 'default bitrates'])
+            self._error(3, ['bitrate', 'default bitrates'])
             self._set_bit = False
-            
+
         if self._resolution == (0,0):
-            error(3, ['resolution', 'default resolutions'])
+            self._error(3, ['resolution', 'default resolutions'])
             self._set_res = False
         else:
             self._aspect_ratio = self._resolution[0]/self._resolution[1]
@@ -57,24 +60,25 @@ class Encoder(object):
 
                 if self._set_bit:
                     if self._bitrate < encoding[0]*1000:
-                        encoder[0] = bitrate//1000
+                        encoding[0] = bitrate//1000
 
                 if self._set_res:
                     encoding[1] = int(encoding[2] * self._aspect_ratio)
-                    if encoder[1]%2 != 0: encoder[1] += 1
+                    if encoding[1]%2 != 0: encoding[1] += 1 # make sure x/y
+                    if encoding[2]%2 != 0: encoding[2] += 1 # vals are even
 
     def _get_video(self):
+        # validation should be more strict here, spaces in file names
+        # have the potential to mess everything up
         if len(sys.argv) < 2:
-            error(0)
+            self._error(0)
 
-        video_name = sys.argv[1]
+        self._source = sys.argv[1]
 
-        if not os.path.isfile(video_name): error(1, video_name)
+        if not os.path.isfile(self._source):
+            self._error(1, self._source)
 
-        return video_name
 
-
-                    
 class Error(object):
     def __init__(self):
         self._errors = [
@@ -92,24 +96,42 @@ class Error(object):
         msg = self._errors[id][0]; msg = msg.format(*insert) if insert else msg
 
         print '\nERROR: %s\n' % msg
-        
+
         if self._errors[id][1]: sys.exit()
 
-def transcode(source):
-    for encode in OPTS:
-        params = [source, encode[0], '%sx%s'%(encode[1],encode[2]), 'new.%s'%(encode[2]) ]
-        print params
-        call_ffmpeg(0, params)
-        call_ffmpeg(1, params)
-        call_ffmpeg(2, params)
-
-def call_ffmpeg(id, opts):
-    cmd = CALLS[id].format(*opts)
-
-    try:
-        subproc.call(cmd ,shell=True)
-    except:
-        error(2, ext)
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+##################################################################
+
+     # TO BE MOVED
+
+# def transcode(source):
+#     for encode in OPTS:
+#         params = [source, encode[0], '%sx%s'%(encode[1],encode[2]), 'new.%s'%(encode[2]) ]
+#         print params
+#         call_ffmpeg(0, params)
+#         call_ffmpeg(1, params)
+#         call_ffmpeg(2, params)
+
+
+
+     # This needs to converted to a more secure calling structure to
+     # allow user options on cmd line
+
+# def call_ffmpeg(id, opts):
+#     cmd = CALLS[id].format(*opts)
+
+#     try:
+#         subproc.call(cmd ,shell=True)
+#     except:
+#         error(2, ext)
+
+
+
+##################################################################
