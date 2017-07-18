@@ -11,7 +11,7 @@ import sys, os
 def main():
     encoder = Encoder()
 
-    encoder('mp4')
+    encoder()
 
 class Encoder(object):
     def __init__(self):
