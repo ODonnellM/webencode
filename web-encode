@@ -11,10 +11,7 @@ import sys, os
 def main():
     encoder = Encoder()
 
-
-# ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner
-# ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner
-# ffmpeg2theora {0} -o {3}.ogv --max_size {2} -V {1}k -A 128k
+    encoder('mp4')
 
 class Encoder(object):
     def __init__(self):
@@ -29,9 +26,70 @@ class Encoder(object):
             [1200, 1280, 720 ],
             [700,  853, 480  ]
         ]
+        self._formats = ['mp4', 'webm', 'ogg']
 
         self._get_video()
         self._init_defaults()
+
+    def __call__(self, ext):
+        print 'attempting to transcode your file...'
+
+        to_run = []
+        
+        for cmds in self._options:
+            to_run.append(self._get_command(cmds))
+
+        for i in to_run:
+            for x in i: subproc.check_output(x)
+        
+    def _get_command(self, encode):
+        cmds = []
+        for ext in self._formats:
+            cmd    = []
+            
+            if ext in ('mp4', 'webm'):
+                cmd.extend(['ffmpeg', '-i', self._source, '-c:a'])
+            
+                if ext == 'mp4':
+                    cmd.extend(['aac', '-strict', '-2', '-c:v', 'libx264',
+                                '-f', 'mp4', '%s.mp4'%(encode[2]), '-crf', '23'
+                    ])
+                else:
+                    cmd.extend(['libvorbis', '-c:v', 'libvpx', '-f', 'webm', '%s.webm'%(encode[2])])
+
+                cmd.extend(['-b:v', '%sk'%(encode[0]), '-b:a', '128k',
+                            '-s', '%sx%s'%(encode[1], encode[2]), '-hide_banner'
+                ])
+                
+            elif ext in ('ogg'):
+                cmd.extend([
+                    'ffmpeg2theora', self._source, '-o', '%s.ogv'%(encode[2]),
+                    '--max_size', '%sx%s'%(encode[1], encode[2]),
+                    '-V', '%sk'%(encode[0]), '-A', '128k'
+                ])
+            
+            else: # This should never be triggered, all internal use
+                self._error(6)
+
+            cmds.append(cmd)
+            
+        return cmds
+            
+    def transcode(self):
+        for encode in _options:
+            params = [source, encode[0], '%sx%s'%(encode[1],encode[2]), 'new.%s'%(encode[2]) ]
+            print params
+            call_ffmpeg(0, params)
+            call_ffmpeg(1, params)
+            call_ffmpeg(2, params)
+
+    def _ffmpeg(self):
+        cmd = CALLS[id].format(*opts)
+
+        try:
+            subproc.call(cmd ,shell=True)
+        except:
+            error(2, ext)
 
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
@@ -40,10 +98,10 @@ class Encoder(object):
         self._isVideo    = False
         self._resolution = (0,0)
         self._bitrate    = 0
-        
+
         for stream in self._data.streams:
             if stream.isVideo():
-                self._isVideo = True
+                self._isVideo    = True
                 self._resolution = stream.frameSize()
                 self._bitrate    = stream.bitrate()
 
@@ -51,13 +109,13 @@ class Encoder(object):
 
         if not self._isVideo:
             self._error(4, self._source)
-            
+
         if self._bitrate == 0:
             err = ','.join([str(x[0])+'k/s' for x in self._options])
               # converts list of bitrates from `self._options` to strings:
               # [[2000, 1920, 1080],[1200, 1280, 720]] -> '2000ks,1200k/s'
             self._error(3, ['bitrate',  err])
-            self._set_bit = False 
+            self._set_bit = False
 
         if self._resolution == (0,0):
             err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self._options])
@@ -73,12 +131,13 @@ class Encoder(object):
 
                 if self._set_bit:
                     if self._bitrate < encoding[0]*1000:
-                        encoding[0] = bitrate//1000
+                        encoding[0] = self._bitrate//1000
 
                 if self._set_res:
                     encoding[1] = int(encoding[2] * self._aspect_ratio)
                     if encoding[1]%2 != 0: encoding[1] += 1 # make sure x/y
                     if encoding[2]%2 != 0: encoding[2] += 1 # vals are even
+
 
     def _get_video(self):
         # validation should be more strict here, spaces in file names
@@ -88,6 +147,10 @@ class Encoder(object):
 
         self._source = sys.argv[1]
 
+        # ffprobe cannot read filenames with spaces
+        if ' ' in self._source:
+            self._error(5, self._source)
+
         if not os.path.isfile(self._source):
             self._error(1, self._source)
 
@@ -95,11 +158,13 @@ class Encoder(object):
 class Error(object):
     def __init__(self):
         self._errors = [
-            ("Missing filename argument", True),    #--------------------------------#0
-            ("Could not locate file '{}'", True),   #--------------------------------#1
+            ("Missing filename argument", True),#------------------------------------#0
+            ("Could not locate file '{}'", True),#-----------------------------------#1
             ("Could not transcode to '.{}'", False),#--------------------------------#2
             ("Could not determine {} of video - exectuing with defaults: {}", False),#3
-            ("Missing video stream, is '{}' not a video?", True ) #----------------------#4
+            ("Missing video stream, is '{}' not a video?", True),#-------------------#4
+            ("'{}' is an invalid name, use only names without whitespace", True),#---#5
+            ("Internal error, exiting...", True)#------------------------------------#6
         ]
 
     #insert must be a list or tuple to avoid weird error printing
@@ -120,33 +185,6 @@ if __name__ == "__main__":
 
 
 
-
-
-##################################################################
-
-     # TO BE MOVED
-
-# def transcode(source):
-#     for encode in OPTS:
-#         params = [source, encode[0], '%sx%s'%(encode[1],encode[2]), 'new.%s'%(encode[2]) ]
-#         print params
-#         call_ffmpeg(0, params)
-#         call_ffmpeg(1, params)
-#         call_ffmpeg(2, params)
-
-
-
-     # This needs to converted to a more secure calling structure to
-     # allow user options on cmd line
-
-# def call_ffmpeg(id, opts):
-#     cmd = CALLS[id].format(*opts)
-
-#     try:
-#         subproc.call(cmd ,shell=True)
-#     except:
-#         error(2, ext)
-
-
-
-##################################################################
+# ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner
+# ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner
+# ffmpeg2theora {0} -o {3}.ogv --max_size {2} -V {1}k -A 128k
