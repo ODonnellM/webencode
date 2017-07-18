@@ -75,22 +75,6 @@ class Encoder(object):
             
         return cmds
             
-    def transcode(self):
-        for encode in _options:
-            params = [source, encode[0], '%sx%s'%(encode[1],encode[2]), 'new.%s'%(encode[2]) ]
-            print params
-            call_ffmpeg(0, params)
-            call_ffmpeg(1, params)
-            call_ffmpeg(2, params)
-
-    def _ffmpeg(self):
-        cmd = CALLS[id].format(*opts)
-
-        try:
-            subproc.call(cmd ,shell=True)
-        except:
-            error(2, ext)
-
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
         # the video already has
