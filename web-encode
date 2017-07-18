@@ -31,26 +31,39 @@ class Encoder(object):
         ]
 
         self._get_video()
-        self._init_opts()
+        self._init_defaults()
 
-    def _init_opts(self):
+    def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
         # the video already has
-        data = ffprobe(self._source)
-
-        for stream in data.streams:
+        self._data = ffprobe(self._source)
+        self._isVideo    = False
+        self._resolution = (0,0)
+        self._bitrate    = 0
+        
+        for stream in self._data.streams:
             if stream.isVideo():
+                self._isVideo = True
                 self._resolution = stream.frameSize()
                 self._bitrate    = stream.bitrate()
 
                 break #break on first video stream
 
+        if not self._isVideo:
+            self._error(4, self._source)
+            
         if self._bitrate == 0:
-            self._error(3, ['bitrate', 'default bitrates'])
-            self._set_bit = False
+            err = ','.join([str(x[0])+'k/s' for x in self._options])
+              # converts list of bitrates from `self._options` to strings:
+              # [[2000, 1920, 1080],[1200, 1280, 720]] -> '2000ks,1200k/s'
+            self._error(3, ['bitrate',  err])
+            self._set_bit = False 
 
         if self._resolution == (0,0):
-            self._error(3, ['resolution', 'default resolutions'])
+            err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self._options])
+              # converts list of x/y's from `self._options` to strings:
+              # [[2000, 1920, 1080],[1200, 1280, 720]] -> '1920x1080,1280x720'
+            self._error(3, ['resolution', err])
             self._set_res = False
         else:
             self._aspect_ratio = self._resolution[0]/self._resolution[1]
@@ -85,19 +98,21 @@ class Error(object):
             ("Missing filename argument", True),    #--------------------------------#0
             ("Could not locate file '{}'", True),   #--------------------------------#1
             ("Could not transcode to '.{}'", False),#--------------------------------#2
-            ("Could not determine {} of video - Exectuing with defaults: {}", False) #3
+            ("Could not determine {} of video - exectuing with defaults: {}", False),#3
+            ("Missing video stream, is '{}' not a video?", True ) #----------------------#4
         ]
 
     #insert must be a list or tuple to avoid weird error printing
     def __call__(self, id, insert=None):
-        if insert and (insert is not list or insert is not tuple):
+        if insert and (type(insert) is not list and type(insert) is not tuple):
             insert = [insert]
 
         msg = self._errors[id][0]; msg = msg.format(*insert) if insert else msg
 
         print '\nERROR: %s\n' % msg
 
-        if self._errors[id][1]: sys.exit()
+        if self._errors[id][1]:
+            sys.exit()
 
 
 if __name__ == "__main__":
