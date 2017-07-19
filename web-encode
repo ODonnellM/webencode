@@ -26,55 +26,60 @@ class Encoder(object):
             [1200, 1280, 720 ],
             [700,  853, 480  ]
         ]
-        self._formats = ['mp4', 'webm', 'ogg']
+        # mp4  : 0
+        # webm : 1
+        # ogg  : 2
+        self._formats = [0, 1, 2]
 
         self._get_video()
         self._init_defaults()
 
-    def __call__(self, ext):
-        print 'attempting to transcode your file...'
+    def __call__(self):
+        devnull = open(os.devnull, 'w')
+        self._to_run = []
+        print 'Beginning transcoding'
 
-        to_run = []
-        
-        for cmds in self._options:
-            to_run.append(self._get_command(cmds))
+        for args in self._options:
+            self._get_command(args)
 
-        for i in to_run:
-            for x in i: subproc.check_output(x)
-        
-    def _get_command(self, encode):
-        cmds = []
+        for cmd in self._to_run:
+            proc = subproc.Popen(cmd)#, stderr=subproc.PIPE)
+            break
+            # for line in proc.stderr:
+            #     print line
+            #     print '----'
+            #     break
+            # break
+
+    def _get_command(self, args):
         for ext in self._formats:
-            cmd    = []
-            
-            if ext in ('mp4', 'webm'):
+            cmd = []
+            if ext in (0, 1):# mp4||webm
                 cmd.extend(['ffmpeg', '-i', self._source, '-c:a'])
-            
-                if ext == 'mp4':
+
+                if ext == 0:
                     cmd.extend(['aac', '-strict', '-2', '-c:v', 'libx264',
-                                '-f', 'mp4', '%s.mp4'%(encode[2]), '-crf', '23'
+                                '-f', 'mp4', '%s.mp4'%(args[2]), '-crf', '23'
                     ])
                 else:
-                    cmd.extend(['libvorbis', '-c:v', 'libvpx', '-f', 'webm', '%s.webm'%(encode[2])])
+                    cmd.extend(['libvorbis', '-c:v', 'libvpx', '-f', 'webm', '%s.webm'%(args[2])])
 
-                cmd.extend(['-b:v', '%sk'%(encode[0]), '-b:a', '128k',
-                            '-s', '%sx%s'%(encode[1], encode[2]), '-hide_banner'
+                cmd.extend(['-b:v', '%sk'%(args[0]), '-b:a', '128k',
+                            '-s', '%sx%s'%(args[1], args[2]), '-hide_banner'
                 ])
-                
-            elif ext in ('ogg'):
+
+            elif ext == 2:# ogg
                 cmd.extend([
-                    'ffmpeg2theora', self._source, '-o', '%s.ogv'%(encode[2]),
-                    '--max_size', '%sx%s'%(encode[1], encode[2]),
-                    '-V', '%sk'%(encode[0]), '-A', '128k'
+                    'ffmpeg2theora', self._source, '-o', '%s.ogv'%(args[2]),
+                    '--max_size', '%sx%s'%(args[1], args[2]),
+                    '-V', '%sk'%(args[0]), '-A', '128k'
                 ])
-            
+
             else: # This should never be triggered, all internal use
                 self._error(6)
 
-            cmds.append(cmd)
-            
-        return cmds
-            
+            self._to_run.append(cmd)
+
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
         # the video already has
@@ -166,7 +171,6 @@ class Error(object):
 
 if __name__ == "__main__":
     main()
-
 
 
 # ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner
