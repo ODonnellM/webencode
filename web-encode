@@ -6,10 +6,11 @@
 from __future__ import division
 from ffprobe import FFProbe as ffprobe
 import subprocess as subproc
-import sys, os, math
+import sys, os, signal
 
 def main():
     encoder = Encoder()
+    signal.signal(signal.SIGINT, encoder.clean)
 
     encoder()
 
@@ -21,19 +22,17 @@ class Encoder(object):
         self._set_res = True
 
         self._options = [
-            #[bitrate, x_res, y_res]
             [2000, 1920, 1080],
             [1200, 1280, 720 ],
             [700,  853, 480  ]
         ]
-        # mp4 : 0 | webm : 1 | ogg : 2
-        self._formats = [0, 1, 2]
+        
+        self._formats = [0,1,2]
 
         self._get_video()
         self._init_defaults()
 
     def __call__(self):
-        devnull = open(os.devnull, 'w')
         self._to_run = []
         print 'Beginning transcoding'
 
@@ -52,6 +51,13 @@ class Encoder(object):
 
         print '\nEncoding complete...cleaning up'
 
+
+    def clean(self, signal, frame):
+        print '\nImmediate kill detected\n\nCleaning up'
+        print '\npretending to clean for right now'            
+        print '\nDone...exiting\n'
+        sys.exit()
+        
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
         # the video already has
@@ -159,6 +165,8 @@ class Command(object):
         parent._to_run.append(command.rstrip().split(' '))
         return [f_format, resolution, bitrate]
 
+    
+    
 class Error(object):
     def __init__(self):
         self._errors = [
@@ -182,7 +190,6 @@ class Error(object):
 
         if self._errors[id][1]:
             sys.exit()
-
-
+            
 if __name__ == "__main__":
     main()
