@@ -22,9 +22,9 @@ class Encoder(object):
 
         self._options = [
             #[bitrate, x_res, y_res]
-            ['2000k', 1920, 1080],
-            ['1200k', 1280, 720 ],
-            ['700k',  853, 480  ]
+            [2000, 1920, 1080],
+            [1200, 1280, 720 ],
+            [700,  853, 480  ]
         ]
         # mp4 : 0 | webm : 1 | ogg : 2
         self._formats = [0, 1, 2]
@@ -50,7 +50,7 @@ class Encoder(object):
             else:
                 print 'Encoding %i/%i complete....continuing'%(idx+1, len(self._to_run))
 
-        print 'Encoding complete...cleaning up'
+        print '\nEncoding complete...cleaning up'
 
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
@@ -123,8 +123,7 @@ class Encoder(object):
 
 class Command(object):
     def __init__(self):
-        self._ffmpeg = 'ffmpeg -loglevel 24 -i {0} -c:v {1} -c:a {2} -b:v {3} -b:a 128k -s {4} -f {5} {6} {7} -hide_banner'
-        self._theora = 'ffmpeg2theora {0} -o {1} --max_size {2} -V {3} -A 128k'
+        self._ffmpeg = 'ffmpeg -loglevel 24 -i {0} -c:v {1} -c:a {2} -b:v {3}k -b:a 128k -s {4} -f {5} {6} {7} -hide_banner'
 
     def __call__(self, parent, args, ext):
         input_f    = parent._source
@@ -133,34 +132,32 @@ class Command(object):
         misc       = '-y'
 
 
-        if ext in (0,1): #mp4||webm
+        if ext in (0,1,2): #mp4||webm||ogg
             if ext == 0:
                 v_codec  = 'libx264'
                 a_codec  = 'aac -strict -2'
                 f_format = 'mp4'
-                misc     = '-crf 23 -y'
                 output   = 'new.%s.mp4'%(args[2])
-            else:
+                misc     = '-crf 23 -y'
+            elif ext == 1:
                 v_codec  = 'libvpx'
                 a_codec  = 'libvorbis'
                 f_format = 'webm'
                 output   = 'new.%s.webm'%(args[2])
-
+            else:
+                v_codec  = 'libtheora'
+                a_codec  = 'libvorbis'
+                f_format = 'ogg'
+                output   = 'new.%s.ogg'%(args[2])
+                
+                
             command = self._ffmpeg.format(input_f, v_codec, a_codec, bitrate, resolution, f_format, misc, output)
 
-        elif ext == 2:
-            f_format = 'ogg'
-            output   = 'new.%s.ogg'%(args[2])
-            command  = self._theora.format(input_f, output, resolution, bitrate)
         else:
             parent._error(6)
 
         parent._to_run.append(command.rstrip().split(' '))
         return [f_format, resolution, bitrate]
-
-# ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner
-# ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner
-# ffmpeg2theora {0} -o {3}.ogv --max_size {2} -V {1}k -A 128k
 
 class Error(object):
     def __init__(self):
