@@ -6,7 +6,7 @@
 from __future__ import division
 from ffprobe import FFProbe as ffprobe
 import subprocess as subproc
-import sys, os
+import sys, os, math
 
 def main():
     encoder = Encoder()
@@ -35,6 +35,7 @@ class Encoder(object):
         self._init_defaults()
 
     def __call__(self):
+
         devnull = open(os.devnull, 'w')
         self._to_run = []
         print 'Beginning transcoding'
@@ -42,30 +43,33 @@ class Encoder(object):
         for args in self._options:
             self._get_command(args)
 
-        for cmd in self._to_run:
-            proc = subproc.Popen(cmd)#, stderr=subproc.PIPE)
-            break
-            # for line in proc.stderr:
-            #     print line
-            #     print '----'
-            #     break
-            # break
+
+        for idx, cmd in enumerate(self._to_run):
+
+            exit_code = subproc.Popen(cmd).wait()#, stderr=devnull, stdout=devnull).wait()
+            print exit_code
+
+
+
 
     def _get_command(self, args):
         for ext in self._formats:
+            # command = Command(args)
+            print "ARGS :", args
+
             cmd = []
             if ext in (0, 1):# mp4||webm
-                cmd.extend(['ffmpeg', '-i', self._source, '-c:a'])
+                cmd.extend(['ffmpeg', '-loglevel', '24', '-i', self._source, '-c:a'])
 
                 if ext == 0:
                     cmd.extend(['aac', '-strict', '-2', '-c:v', 'libx264',
-                                '-f', 'mp4', '%s.mp4'%(args[2]), '-crf', '23'
+                                '-f', 'mp4', '-crf', '23', '%s.mp4'%(args[2])
                     ])
                 else:
                     cmd.extend(['libvorbis', '-c:v', 'libvpx', '-f', 'webm', '%s.webm'%(args[2])])
 
                 cmd.extend(['-b:v', '%sk'%(args[0]), '-b:a', '128k',
-                            '-s', '%sx%s'%(args[1], args[2]), '-hide_banner'
+                            '-s', '%sx%s'%(args[1], args[2]), '-y', '-hide_banner'
                 ])
 
             elif ext == 2:# ogg
@@ -79,6 +83,7 @@ class Encoder(object):
                 self._error(6)
 
             self._to_run.append(cmd)
+            # self._to_run.append(command())
 
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
@@ -143,7 +148,46 @@ class Encoder(object):
         if not os.path.isfile(self._source):
             self._error(1, self._source)
 
+class Command(object):
+    # if ext in (0, 1):# mp4||webm
+    #     cmd.extend(['ffmpeg', '-loglevel', '24', '-i', self._source, '-c:a'])
+        
+    #     if ext == 0:
+    #         cmd.extend(['aac', '-strict', '-2', '-c:v', 'libx264',
+    #                     '-f', 'mp4', '-crf', '23', '%s.mp4'%(args[2])
+    #         ])
+    #     else:
+    #         cmd.extend(['libvorbis', '-c:v', 'libvpx', '-f', 'webm', '%s.webm'%(args[2])])
+            
+    #         cmd.extend(['-b:v', '%sk'%(args[0]), '-b:a', '128k',
+    #                     '-s', '%sx%s'%(args[1], args[2]), '-y', '-hide_banner'
+    #         ])
+            
+    # elif ext == 2:# ogg
+    #     cmd.extend([
+    #         'ffmpeg2theora', self._source, '-o', '%s.ogv'%(args[2]),
+    #         '--max_size', '%sx%s'%(args[1], args[2]),
+    #         '-V', '%sk'%(args[0]), '-A', '128k'
+    #     ])
+                
+    def __init__(self, args, ext):
 
+
+        
+        self.loglevel   = '24'
+        self.input      = None
+        self.codec_v    = None
+        self.codec_a    = None
+        self.bitrate_v  = None
+        self.bitrate_a  = None
+        self.force      = None
+        self.resolution = '%sx%s'
+    
+    def _call_(self):
+        print "I don't do anything yet"
+#        self.
+
+        
 class Error(object):
     def __init__(self):
         self._errors = [
