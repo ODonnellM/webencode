@@ -22,20 +22,17 @@ class Encoder(object):
 
         self._options = [
             #[bitrate, x_res, y_res]
-            [2000, 1920, 1080],
-            [1200, 1280, 720 ],
-            [700,  853, 480  ]
+            ['2000k', 1920, 1080],
+            ['1200k', 1280, 720 ],
+            ['700k',  853, 480  ]
         ]
-        # mp4  : 0
-        # webm : 1
-        # ogg  : 2
+        # mp4 : 0 | webm : 1 | ogg : 2
         self._formats = [0, 1, 2]
 
         self._get_video()
         self._init_defaults()
 
     def __call__(self):
-
         devnull = open(os.devnull, 'w')
         self._to_run = []
         print 'Beginning transcoding'
@@ -43,52 +40,23 @@ class Encoder(object):
         for args in self._options:
             self._get_command(args)
 
-
         for idx, cmd in enumerate(self._to_run):
+            msg = "'{}' - {} - {}k/s".format(*self._cur[idx])
+            print '\nEncoding to %s'%(msg)
 
-            exit_code = subproc.Popen(cmd).wait()#, stderr=devnull, stdout=devnull).wait()
-            print exit_code
+            exit_code = subproc.Popen(cmd).wait()
+            if exit_code != 0:
+                self._error(2, msg)
+            else:
+                print 'Encoding %i/%i complete....continuing'%(idx+1, len(self._to_run))
 
-
-
-
-    def _get_command(self, args):
-        for ext in self._formats:
-            # command = Command(args)
-            print "ARGS :", args
-
-            cmd = []
-            if ext in (0, 1):# mp4||webm
-                cmd.extend(['ffmpeg', '-loglevel', '24', '-i', self._source, '-c:a'])
-
-                if ext == 0:
-                    cmd.extend(['aac', '-strict', '-2', '-c:v', 'libx264',
-                                '-f', 'mp4', '-crf', '23', '%s.mp4'%(args[2])
-                    ])
-                else:
-                    cmd.extend(['libvorbis', '-c:v', 'libvpx', '-f', 'webm', '%s.webm'%(args[2])])
-
-                cmd.extend(['-b:v', '%sk'%(args[0]), '-b:a', '128k',
-                            '-s', '%sx%s'%(args[1], args[2]), '-y', '-hide_banner'
-                ])
-
-            elif ext == 2:# ogg
-                cmd.extend([
-                    'ffmpeg2theora', self._source, '-o', '%s.ogv'%(args[2]),
-                    '--max_size', '%sx%s'%(args[1], args[2]),
-                    '-V', '%sk'%(args[0]), '-A', '128k'
-                ])
-
-            else: # This should never be triggered, all internal use
-                self._error(6)
-
-            self._to_run.append(cmd)
-            # self._to_run.append(command())
+        print 'Encoding complete...cleaning up'
 
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
         # the video already has
         self._data = ffprobe(self._source)
+        self._cur        = []
         self._isVideo    = False
         self._resolution = (0,0)
         self._bitrate    = 0
@@ -132,7 +100,6 @@ class Encoder(object):
                     if encoding[1]%2 != 0: encoding[1] += 1 # make sure x/y
                     if encoding[2]%2 != 0: encoding[2] += 1 # vals are even
 
-
     def _get_video(self):
         # validation should be more strict here, spaces in file names
         # have the potential to mess everything up
@@ -148,52 +115,59 @@ class Encoder(object):
         if not os.path.isfile(self._source):
             self._error(1, self._source)
 
+    def _get_command(self, args):
+        command = Command()
+        for ext in self._formats:
+            self._cur.append(command(self, args, ext))
+
+
 class Command(object):
-    # if ext in (0, 1):# mp4||webm
-    #     cmd.extend(['ffmpeg', '-loglevel', '24', '-i', self._source, '-c:a'])
-        
-    #     if ext == 0:
-    #         cmd.extend(['aac', '-strict', '-2', '-c:v', 'libx264',
-    #                     '-f', 'mp4', '-crf', '23', '%s.mp4'%(args[2])
-    #         ])
-    #     else:
-    #         cmd.extend(['libvorbis', '-c:v', 'libvpx', '-f', 'webm', '%s.webm'%(args[2])])
-            
-    #         cmd.extend(['-b:v', '%sk'%(args[0]), '-b:a', '128k',
-    #                     '-s', '%sx%s'%(args[1], args[2]), '-y', '-hide_banner'
-    #         ])
-            
-    # elif ext == 2:# ogg
-    #     cmd.extend([
-    #         'ffmpeg2theora', self._source, '-o', '%s.ogv'%(args[2]),
-    #         '--max_size', '%sx%s'%(args[1], args[2]),
-    #         '-V', '%sk'%(args[0]), '-A', '128k'
-    #     ])
-                
-    def __init__(self, args, ext):
+    def __init__(self):
+        self._ffmpeg = 'ffmpeg -loglevel 24 -i {0} -c:v {1} -c:a {2} -b:v {3} -b:a 128k -s {4} -f {5} {6} {7} -hide_banner'
+        self._theora = 'ffmpeg2theora {0} -o {1} --max_size {2} -V {3} -A 128k'
+
+    def __call__(self, parent, args, ext):
+        input_f    = parent._source
+        bitrate    = args[0]
+        resolution = '%sx%s'%(args[1], args[2])
+        misc       = '-y'
 
 
-        
-        self.loglevel   = '24'
-        self.input      = None
-        self.codec_v    = None
-        self.codec_a    = None
-        self.bitrate_v  = None
-        self.bitrate_a  = None
-        self.force      = None
-        self.resolution = '%sx%s'
-    
-    def _call_(self):
-        print "I don't do anything yet"
-#        self.
+        if ext in (0,1): #mp4||webm
+            if ext == 0:
+                v_codec  = 'libx264'
+                a_codec  = 'aac -strict -2'
+                f_format = 'mp4'
+                misc     = '-crf 23 -y'
+                output   = 'new.%s.mp4'%(args[2])
+            else:
+                v_codec  = 'libvpx'
+                a_codec  = 'libvorbis'
+                f_format = 'webm'
+                output   = 'new.%s.webm'%(args[2])
 
-        
+            command = self._ffmpeg.format(input_f, v_codec, a_codec, bitrate, resolution, f_format, misc, output)
+
+        elif ext == 2:
+            f_format = 'ogg'
+            output   = 'new.%s.ogg'%(args[2])
+            command  = self._theora.format(input_f, output, resolution, bitrate)
+        else:
+            parent._error(6)
+
+        parent._to_run.append(command.rstrip().split(' '))
+        return [f_format, resolution, bitrate]
+
+# ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner
+# ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner
+# ffmpeg2theora {0} -o {3}.ogv --max_size {2} -V {1}k -A 128k
+
 class Error(object):
     def __init__(self):
         self._errors = [
             ("Missing filename argument", True),#------------------------------------#0
             ("Could not locate file '{}'", True),#-----------------------------------#1
-            ("Could not transcode to '.{}'", False),#--------------------------------#2
+            ("Could not transcode to {}", False),#--------------------------------#2
             ("Could not determine {} of video - exectuing with defaults: {}", False),#3
             ("Missing video stream, is '{}' not a video?", True),#-------------------#4
             ("'{}' is an invalid name, use only names without whitespace", True),#---#5
@@ -215,8 +189,3 @@ class Error(object):
 
 if __name__ == "__main__":
     main()
-
-
-# ffmpeg -i {0} -c:a aac -strict -2 -b:a 128k -c:v libx264 -f mp4 -b:v {1}k -s {2} {3}.mp4 -crf 23 -hide_banner
-# ffmpeg -i {0} -c:v libvpx -b:v {1}k -c:a libvorbis -b:a 128k -s {2} -f webm {3}.webm -hide_banner
-# ffmpeg2theora {0} -o {3}.ogv --max_size {2} -V {1}k -A 128k
