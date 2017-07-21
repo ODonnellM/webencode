@@ -5,16 +5,9 @@ import subprocess as subproc
 import sys, os, signal, tempfile
 
 def main(encoder):
-    try:
-        encoder()
-    except(KeyboardInterrupt, SystemExit):
-        print 'cleaning'
-        #encoder.clean()
-        print 'exiting'
-    else:
-        print 'Encoding Complete'
-        print 'Exiting'
+    encoder()
 
+    print 'Encoding Completed'
     sys.exit()
 
 class Encoder(object):
@@ -28,7 +21,6 @@ class Encoder(object):
         self._set_bit = True
         self._set_res = True
 
-        #bitrate, x, y
         self.options = [
             [2000, 1920, 1080],
             [1200, 1280, 720 ],
@@ -40,7 +32,6 @@ class Encoder(object):
         self._init_defaults()
 
     def __call__(self):
-        num_cmds = len(self.options)*len(self.formats)
         for opts in self.options:
             for idx, ext in enumerate(self.formats):
                 msg = "'{}' - {} - {}k/s".format(ext, '%sx%s'%(opts[1],opts[2]), opts[0])
@@ -56,7 +47,12 @@ class Encoder(object):
                         out_name = self.source.split('.')
                         out_name[-1] = '%s.%s'%(opts[2], ext)
                         outfile_commit(f, '.'.join(out_name))
-                        print 'Encoding %i/%i complete....continuing'%(idx+1, num_cmds)
+                        print 'Done'
+                except(KeyboardInterrupt, SystemExit):
+                    print "\nImmediate exit requested\n\ncleaning..."
+                    outfile_cancel(f)
+                    print "exiting..."
+                    sys.exit()
                 except:
                     outfile_cancel(f)
                     self.error(2, msg)
@@ -64,7 +60,6 @@ class Encoder(object):
     def _arg_builder(self, opts, ext, f):
         self.args = ['ffmpeg', '-loglevel', '24',
                       '-i', self.source, '-c:v']
-        # video codec
         if ext == 'mp4':
             self.args.extend(['libx264'])
         elif ext == 'webm':
@@ -75,7 +70,6 @@ class Encoder(object):
 
         self.args.extend(['-c:a'])
 
-        #audio codec
         if ext == 'mp4':
             self.args.extend(['aac', '-strict', '-2'])
         else: self.args.extend(['libvorbis'])
@@ -90,15 +84,11 @@ class Encoder(object):
         self.args.extend(['-y', f, '-hide_banner'])
         return self.args
 
-
     def _get_video(self):
-        # validation should be more strict here, spaces in file names
-        # have the potential to mess everything up
         if len(sys.argv) < 2:
             self.error(0)
 
         self.source = sys.argv[1]
-
         # ffprobe cannot read filenames with spaces
         if ' ' in self.source:
             self.error(5, self.source)
@@ -106,8 +96,6 @@ class Encoder(object):
             self.error(1, self.source)
 
     def _init_defaults(self):
-        # changes resolutions and bit rates according to what encoding
-        # the video already has
         self._data = ffprobe(self.source)
         self._cur        = []
         self._isVideo    = False
@@ -127,15 +115,11 @@ class Encoder(object):
 
         if self._bitrate == 0:
             err = ','.join([str(x[0])+'k/s' for x in self.options])
-            # converts list of bitrates from `self.options` to strings:
-            # [[2000, 1920, 1080],[1200, 1280, 720]] -> '2000ks,1200k/s'
             self.error(3, ['bitrate',  err])
             self._set_bit = False
 
         if self._resolution == (0,0):
             err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self.options])
-            # converts list of x/y's from `self.options` to strings:
-            # [[2000, 1920, 1080],[1200, 1280, 720]] -> '1920x1080,1280x720'
             self.error(3, ['resolution', err])
             self._set_res = False
         else:
@@ -166,7 +150,6 @@ class Error(object):
             ("Internal error, exiting...", True)#------------------------------------#6
         ]
 
-    #insert must be a list or tuple to avoid weird error printing
     def __call__(self, id, insert=None):
         if insert and (type(insert) is not list and type(insert) is not tuple):
             insert = [insert]
@@ -177,7 +160,6 @@ class Error(object):
 
         if self._errors[id][1]:
             sys.exit()
-
 
 def outfile_open(**kwargs):
     if 'mode' not in kwargs: kwargs['mode'] = 'wb'
