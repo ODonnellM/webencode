@@ -10,71 +10,23 @@ import sys, os, signal, tempfile
 
 
 
-def main():
-    args    = argparser()
-    
-    encoder = Encoder()
-
-    caller  = ArgBuilder(encoder) #build this object/function
-
-    for idx, command in enumerate(caller()):
-        f = outfile_open()
-        try:
-            encoder(command, idx, f.name)
-            outfile_commit(f, encoder.newfile)
-        except(KeyboardInterrupt, SystemExit):
+def main(encoder):
+    try:
+        encoder()
+    except(KeyboardInterrupt, SystemExit):
             print 'cleaning'
-            outfile_cancel(f)
+            #encoder.clean()
             print 'exiting'
+    else:   
+        print 'Encoding Complete'
+        print 'Exiting'
 
-    print 'Encoding Complete'
-    print 'Exiting'
     sys.exit()
-
-class ArgBuilder(object):
-    def __init__(self, encoder):
-        self._encoder = encoder
-        self._opts    = encoder.options
-        self._force   = ['mp4', 'webm', 'ogg']
-        self.cmds     = []
-
-        
-        for ext in self._encoder.formats:
-            self.args = ['ffmpeg', '-loglevel', '24',
-                         '-i', self._encoder.source, '-c:v']
-
-            # video codec
-            if ext == 0  : self.args.extend(['libx264'])
-            elif ext == 1: self.args.extend(['libvpx'])
-            elif ext == 2: self.args.extend(['libtheora'])
-            else         : self._encoder.error(6)
-
-            self.args.extend(['-c:a'])
-
-            #audio codec
-            if ext == 0:
-                self.args.extend(['aac', '-strict', '-2'])
-            else: self.args.extend(['libvorbis'])
-
-            self.args.extend([
-                '-b:v', '%sk'%(self._opts[0]),
-                '-b:a', '128k', '-s',
-                '%sx%s'%(self._opts[],self._opts[2]),
-                self._force[ext]
-            ])
-
-            if ext == 0: self.args.extend(['-crf', '23'])
-
-            self.args.extend(['y', '-hide_banner'])
-
-            self.cmds.append(self.args)
-
-        for x in self.cmds:
-            print ' '.join(x)
             
-class Encode(object):
+class Encoder(object):
     def __init__(self):
         print 'Starting encoder'
+        self.temp_files = []
         self.error = Error()
 
         self._set_bit = True
@@ -86,17 +38,52 @@ class Encode(object):
             [1200, 1280, 720 ],
             [700,  853, 480  ]
         ]
-
-        self.formats = [0,1,2]
-        # mp4, webm, ogg -> done this way to allow passed in args to
-        # decide what formats to encode rather than a strict hardcoding
+        self.formats = ['mp4', 'webm', 'ogg']
         
         self._get_video()
         self._init_defaults()
-        print 'Building commands'
+        self._arg_builder()
+
+    def __call__(self):
         
-#    def __call__(self, cmd, outfile):
         
+    def _arg_builder(self):
+        self.cmds = []
+
+        for opts in self.options:
+            for idx, ext in enumerate(self.formats):
+                
+                self.args  = ['ffmpeg', '-loglevel', '24',
+                              '-i', self.source, '-c:v']
+
+                # video codec
+                if idx == 0  : self.args.extend(['libx264'])
+                elif idx == 1: self.args.extend(['libvpx'])
+                elif idx == 2: self.args.extend(['libtheora'])
+                else         : self.error(6)
+
+                self.args.extend(['-c:a'])
+
+                #audio codec
+                if idx == 0:
+                    self.args.extend(['aac', '-strict', '-2'])
+                else: self.args.extend(['libvorbis'])
+
+                self.args.extend([
+                    '-b:v', '%sk'%(opts[0]),
+                    '-b:a', '128k', '-s',
+                    '%sx%s'%(opts[1],opts[2]), ext
+                ])
+
+                if idx == 0: self.args.extend(['-crf', '23'])
+                
+                self.args.extend(['-y','-hide_banner'])
+                
+                self.cmds.append(self.args)
+
+        for x in self.cmds:
+            print ' '.join(x)
+
         
     def _get_video(self):
         # validation should be more strict here, spaces in file names
@@ -200,4 +187,4 @@ def outfile_cancel(temp_file):
     os.unlink(temp_file.name)
 
 if __name__ == "__main__":
-    main()
+    main(Encoder())
