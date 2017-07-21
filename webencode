@@ -8,9 +8,9 @@ def main(encoder):
     try:
         encoder()
     except(KeyboardInterrupt, SystemExit):
-            print 'cleaning'
-            #encoder.clean()
-            print 'exiting'
+        print 'cleaning'
+        #encoder.clean()
+        print 'exiting'
     else:
         print 'Encoding Complete'
         print 'Exiting'
@@ -21,6 +21,8 @@ class Encoder(object):
     def __init__(self):
         print 'Starting encoder'
         self.temp_files = []
+        self.cmds       = []
+
         self.error = Error()
 
         self._set_bit = True
@@ -36,47 +38,58 @@ class Encoder(object):
 
         self._get_video()
         self._init_defaults()
-        self._arg_builder()
 
     def __call__(self):
-
-
-    def _arg_builder(self):
-        self.cmds = []
-
+        num_cmds = len(self.options)*len(self.formats)
         for opts in self.options:
             for idx, ext in enumerate(self.formats):
+                msg = "'{}' - {} - {}k/s".format(ext, '%sx%s'%(opts[1],opts[2]), opts[0])
+                print '\nEncoding to %s'%(msg)
+                f = outfile_open()
+                try:
+                    cmd = self._arg_builder(opts, ext, f.name)
+                    exit_code = subproc.Popen(cmd).wait()
+                    if exit_code != 0:
+                        outfile_cancel(f)
+                        self.error(2, msg)
+                    else:
+                        out_name = self.source.split('.')
+                        out_name[-1] = '%s.%s'%(opts[2], ext)
+                        outfile_commit(f, '.'.join(out_name))
+                        print 'Encoding %i/%i complete....continuing'%(idx+1, num_cmds)
+                except:
+                    outfile_cancel(f)
+                    self.error(2, msg)
 
-                self.args  = ['ffmpeg', '-loglevel', '24',
-                              '-i', self.source, '-c:v']
+    def _arg_builder(self, opts, ext, f):
+        self.args = ['ffmpeg', '-loglevel', '24',
+                      '-i', self.source, '-c:v']
+        # video codec
+        if ext == 'mp4':
+            self.args.extend(['libx264'])
+        elif ext == 'webm':
+            self.args.extend(['libvpx'])
+        elif ext == 'ogg':
+            self.args.extend(['libtheora'])
+        else: self.error(6)
 
-                # video codec
-                if idx == 0  : self.args.extend(['libx264'])
-                elif idx == 1: self.args.extend(['libvpx'])
-                elif idx == 2: self.args.extend(['libtheora'])
-                else         : self.error(6)
+        self.args.extend(['-c:a'])
 
-                self.args.extend(['-c:a'])
+        #audio codec
+        if ext == 'mp4':
+            self.args.extend(['aac', '-strict', '-2'])
+        else: self.args.extend(['libvorbis'])
 
-                #audio codec
-                if idx == 0:
-                    self.args.extend(['aac', '-strict', '-2'])
-                else: self.args.extend(['libvorbis'])
+        self.args.extend([
+            '-b:v', '%sk'%(opts[0]), '-b:a', '128k',
+            '-s', '%sx%s'%(opts[1],opts[2]), '-f', ext
+        ])
 
-                self.args.extend([
-                    '-b:v', '%sk'%(opts[0]),
-                    '-b:a', '128k', '-s',
-                    '%sx%s'%(opts[1],opts[2]), ext
-                ])
+        if ext == 'mp4': self.args.extend(['-crf', '23'])
 
-                if idx == 0: self.args.extend(['-crf', '23'])
+        self.args.extend(['-y', f, '-hide_banner'])
+        return self.args
 
-                self.args.extend(['-y','-hide_banner'])
-
-                self.cmds.append(self.args)
-
-        for x in self.cmds:
-            print ' '.join(x)
 
     def _get_video(self):
         # validation should be more strict here, spaces in file names
@@ -114,15 +127,15 @@ class Encoder(object):
 
         if self._bitrate == 0:
             err = ','.join([str(x[0])+'k/s' for x in self.options])
-              # converts list of bitrates from `self.options` to strings:
-              # [[2000, 1920, 1080],[1200, 1280, 720]] -> '2000ks,1200k/s'
+            # converts list of bitrates from `self.options` to strings:
+            # [[2000, 1920, 1080],[1200, 1280, 720]] -> '2000ks,1200k/s'
             self.error(3, ['bitrate',  err])
             self._set_bit = False
 
         if self._resolution == (0,0):
             err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self.options])
-              # converts list of x/y's from `self.options` to strings:
-              # [[2000, 1920, 1080],[1200, 1280, 720]] -> '1920x1080,1280x720'
+            # converts list of x/y's from `self.options` to strings:
+            # [[2000, 1920, 1080],[1200, 1280, 720]] -> '1920x1080,1280x720'
             self.error(3, ['resolution', err])
             self._set_res = False
         else:
