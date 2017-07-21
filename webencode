@@ -97,7 +97,6 @@ class Encoder(object):
 
     def _init_defaults(self):
         self._data = ffprobe(self.source)
-        self._cur        = []
         self._isVideo    = False
         self._resolution = (0,0)
         self._bitrate    = 0
