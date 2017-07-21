@@ -6,57 +6,71 @@
 from __future__ import division
 from ffprobe import FFProbe as ffprobe
 import subprocess as subproc
-import sys, os, signal
+import sys, os, signal, tempfile
+
+
 
 def main():
+    args    = argparser()
+    
     encoder = Encoder()
-    signal.signal(signal.SIGINT, encoder.clean)
 
-    encoder()
+    caller  = ArgBuilder(encoder) #build this object/function
 
-class Encoder(object):
+    for idx, command in enumerate(caller()):
+        f = outfile_open()
+        try:
+            encoder(command, idx, f.name)
+            outfile_commit(f, encoder.newfile)
+        except(KeyboardInterrupt, SystemExit):
+            print 'cleaning'
+            outfile_cancel(f)
+            print 'exiting'
+
+
+    print 'Encoding Complete'
+    print 'Exiting'
+    sys.exit()
+        
+class Encode(object):
     def __init__(self):
-        self._error = Error()
+        print 'Starting encoder'
+        self.error = Error()
 
         self._set_bit = True
         self._set_res = True
 
+        #bitrate, x, y
         self._options = [
             [2000, 1920, 1080],
             [1200, 1280, 720 ],
             [700,  853, 480  ]
         ]
-        
-        self._formats = [0,1,2]
 
+        self._formats = [0,1,2]
+        # mp4, webm, ogg -> done this way to allow passed in args to
+        # decide what formats to encode rather than a strict hardcoding
+        
         self._get_video()
         self._init_defaults()
+        print 'Success'
+        
+#    def __call__(self, cmd, outfile):
 
-    def __call__(self):
-        self._to_run = []
-        print 'Beginning transcoding'
+        
+    def _get_video(self):
+        # validation should be more strict here, spaces in file names
+        # have the potential to mess everything up
+        if len(sys.argv) < 2:
+            self.error(0)
 
-        for args in self._options:
-            self._get_command(args)
+        self._source = sys.argv[1]
 
-        for idx, cmd in enumerate(self._to_run):
-            msg = "'{}' - {} - {}k/s".format(*self._cur[idx])
-            print '\nEncoding to %s'%(msg)
-
-            exit_code = subproc.Popen(cmd).wait()
-            if exit_code != 0:
-                self._error(2, msg)
-            else:
-                print 'Encoding %i/%i complete....continuing'%(idx+1, len(self._to_run))
-
-        print '\nEncoding complete...cleaning up'
-
-
-    def clean(self, signal, frame):
-        print '\nImmediate kill detected\n\nCleaning up'
-        print '\npretending to clean for right now'            
-        print '\nDone...exiting\n'
-        sys.exit()
+        # ffprobe cannot read filenames with spaces
+        if ' ' in self._source:
+            self.error(5, self._source)
+        elif not os.path.isfile(self._source):
+            self.error(1, self._source)
         
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
@@ -76,20 +90,20 @@ class Encoder(object):
                 break #break on first video stream
 
         if not self._isVideo:
-            self._error(4, self._source)
+            self.error(4, self._source)
 
         if self._bitrate == 0:
             err = ','.join([str(x[0])+'k/s' for x in self._options])
               # converts list of bitrates from `self._options` to strings:
               # [[2000, 1920, 1080],[1200, 1280, 720]] -> '2000ks,1200k/s'
-            self._error(3, ['bitrate',  err])
+            self.error(3, ['bitrate',  err])
             self._set_bit = False
 
         if self._resolution == (0,0):
             err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self._options])
               # converts list of x/y's from `self._options` to strings:
               # [[2000, 1920, 1080],[1200, 1280, 720]] -> '1920x1080,1280x720'
-            self._error(3, ['resolution', err])
+            self.error(3, ['resolution', err])
             self._set_res = False
         else:
             self._aspect_ratio = self._resolution[0]/self._resolution[1]
@@ -105,74 +119,14 @@ class Encoder(object):
                     encoding[1] = int(encoding[2] * self._aspect_ratio)
                     if encoding[1]%2 != 0: encoding[1] += 1 # make sure x/y
                     if encoding[2]%2 != 0: encoding[2] += 1 # vals are even
-
-    def _get_video(self):
-        # validation should be more strict here, spaces in file names
-        # have the potential to mess everything up
-        if len(sys.argv) < 2:
-            self._error(0)
-
-        self._source = sys.argv[1]
-
-        # ffprobe cannot read filenames with spaces
-        if ' ' in self._source:
-            self._error(5, self._source)
-
-        if not os.path.isfile(self._source):
-            self._error(1, self._source)
-
-    def _get_command(self, args):
-        command = Command()
-        for ext in self._formats:
-            self._cur.append(command(self, args, ext))
-
-
-class Command(object):
-    def __init__(self):
-        self._ffmpeg = 'ffmpeg -loglevel 24 -i {0} -c:v {1} -c:a {2} -b:v {3}k -b:a 128k -s {4} -f {5} {6} {7} -hide_banner'
-
-    def __call__(self, parent, args, ext):
-        input_f    = parent._source
-        bitrate    = args[0]
-        resolution = '%sx%s'%(args[1], args[2])
-        misc       = '-y'
-
-
-        if ext in (0,1,2): #mp4||webm||ogg
-            if ext == 0:
-                v_codec  = 'libx264'
-                a_codec  = 'aac -strict -2'
-                f_format = 'mp4'
-                output   = 'new.%s.mp4'%(args[2])
-                misc     = '-crf 23 -y'
-            elif ext == 1:
-                v_codec  = 'libvpx'
-                a_codec  = 'libvorbis'
-                f_format = 'webm'
-                output   = 'new.%s.webm'%(args[2])
-            else:
-                v_codec  = 'libtheora'
-                a_codec  = 'libvorbis'
-                f_format = 'ogg'
-                output   = 'new.%s.ogg'%(args[2])
-                
-                
-            command = self._ffmpeg.format(input_f, v_codec, a_codec, bitrate, resolution, f_format, misc, output)
-
-        else:
-            parent._error(6)
-
-        parent._to_run.append(command.rstrip().split(' '))
-        return [f_format, resolution, bitrate]
-
     
-    
+
 class Error(object):
     def __init__(self):
         self._errors = [
             ("Missing filename argument", True),#------------------------------------#0
             ("Could not locate file '{}'", True),#-----------------------------------#1
-            ("Could not transcode to {}", False),#--------------------------------#2
+            ("Could not transcode to {}", False),#-----------------------------------#2
             ("Could not determine {} of video - exectuing with defaults: {}", False),#3
             ("Missing video stream, is '{}' not a video?", True),#-------------------#4
             ("'{}' is an invalid name, use only names without whitespace", True),#---#5
@@ -190,6 +144,20 @@ class Error(object):
 
         if self._errors[id][1]:
             sys.exit()
-            
+
+    
+def outfile_open(**kwargs):
+    if 'mode' not in kwargs: kwargs['mode'] = 'wb'
+    if 'dir'  not in kwargs: kwargs['dir']  = '.'
+    kwargs['delete'] = False
+    return tempfile.NamedTemporaryFile(**kwargs)
+
+def outfile_commit(temp_file, target_name, chmod=0644):
+    if chmod: os.chmod(temp_file.name, chmod)
+    os.rename(temp_file.name, target_name)
+    
+def outfile_cancel(temp_file):
+    os.unlink(temp_file.name)
+
 if __name__ == "__main__":
     main()
