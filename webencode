@@ -1,14 +1,8 @@
 #!/usr/bin/python
-
-# Script for transcoding video files to several web acceptable
-# formats/bitrates/resolutions
-
 from __future__ import division
 from ffprobe import FFProbe as ffprobe
 import subprocess as subproc
 import sys, os, signal, tempfile
-
-
 
 def main(encoder):
     try:
@@ -17,12 +11,12 @@ def main(encoder):
             print 'cleaning'
             #encoder.clean()
             print 'exiting'
-    else:   
+    else:
         print 'Encoding Complete'
         print 'Exiting'
 
     sys.exit()
-            
+
 class Encoder(object):
     def __init__(self):
         print 'Starting encoder'
@@ -39,20 +33,20 @@ class Encoder(object):
             [700,  853, 480  ]
         ]
         self.formats = ['mp4', 'webm', 'ogg']
-        
+
         self._get_video()
         self._init_defaults()
         self._arg_builder()
 
     def __call__(self):
-        
-        
+
+
     def _arg_builder(self):
         self.cmds = []
 
         for opts in self.options:
             for idx, ext in enumerate(self.formats):
-                
+
                 self.args  = ['ffmpeg', '-loglevel', '24',
                               '-i', self.source, '-c:v']
 
@@ -76,15 +70,14 @@ class Encoder(object):
                 ])
 
                 if idx == 0: self.args.extend(['-crf', '23'])
-                
+
                 self.args.extend(['-y','-hide_banner'])
-                
+
                 self.cmds.append(self.args)
 
         for x in self.cmds:
             print ' '.join(x)
 
-        
     def _get_video(self):
         # validation should be more strict here, spaces in file names
         # have the potential to mess everything up
@@ -98,7 +91,7 @@ class Encoder(object):
             self.error(5, self.source)
         elif not os.path.isfile(self.source):
             self.error(1, self.source)
-        
+
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
         # the video already has
@@ -146,7 +139,7 @@ class Encoder(object):
                     encoding[1] = int(encoding[2] * self._aspect_ratio)
                     if encoding[1]%2 != 0: encoding[1] += 1 # make sure x/y
                     if encoding[2]%2 != 0: encoding[2] += 1 # vals are even
-    
+
 
 class Error(object):
     def __init__(self):
@@ -172,7 +165,7 @@ class Error(object):
         if self._errors[id][1]:
             sys.exit()
 
-    
+
 def outfile_open(**kwargs):
     if 'mode' not in kwargs: kwargs['mode'] = 'wb'
     if 'dir'  not in kwargs: kwargs['dir']  = '.'
@@ -182,7 +175,7 @@ def outfile_open(**kwargs):
 def outfile_commit(temp_file, target_name, chmod=0644):
     if chmod: os.chmod(temp_file.name, chmod)
     os.rename(temp_file.name, target_name)
-    
+
 def outfile_cancel(temp_file):
     os.unlink(temp_file.name)
 
