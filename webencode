@@ -27,11 +27,51 @@ def main():
             outfile_cancel(f)
             print 'exiting'
 
-
     print 'Encoding Complete'
     print 'Exiting'
     sys.exit()
+
+class ArgBuilder(object):
+    def __init__(self, encoder):
+        self._encoder = encoder
+        self._opts    = encoder.options
+        self._force   = ['mp4', 'webm', 'ogg']
+        self.cmds     = []
+
         
+        for ext in self._encoder.formats:
+            self.args = ['ffmpeg', '-loglevel', '24',
+                         '-i', self._encoder.source, '-c:v']
+
+            # video codec
+            if ext == 0  : self.args.extend(['libx264'])
+            elif ext == 1: self.args.extend(['libvpx'])
+            elif ext == 2: self.args.extend(['libtheora'])
+            else         : self._encoder.error(6)
+
+            self.args.extend(['-c:a'])
+
+            #audio codec
+            if ext == 0:
+                self.args.extend(['aac', '-strict', '-2'])
+            else: self.args.extend(['libvorbis'])
+
+            self.args.extend([
+                '-b:v', '%sk'%(self._opts[0]),
+                '-b:a', '128k', '-s',
+                '%sx%s'%(self._opts[],self._opts[2]),
+                self._force[ext]
+            ])
+
+            if ext == 0: self.args.extend(['-crf', '23'])
+
+            self.args.extend(['y', '-hide_banner'])
+
+            self.cmds.append(self.args)
+
+        for x in self.cmds:
+            print ' '.join(x)
+            
 class Encode(object):
     def __init__(self):
         print 'Starting encoder'
@@ -41,22 +81,22 @@ class Encode(object):
         self._set_res = True
 
         #bitrate, x, y
-        self._options = [
+        self.options = [
             [2000, 1920, 1080],
             [1200, 1280, 720 ],
             [700,  853, 480  ]
         ]
 
-        self._formats = [0,1,2]
+        self.formats = [0,1,2]
         # mp4, webm, ogg -> done this way to allow passed in args to
         # decide what formats to encode rather than a strict hardcoding
         
         self._get_video()
         self._init_defaults()
-        print 'Success'
+        print 'Building commands'
         
 #    def __call__(self, cmd, outfile):
-
+        
         
     def _get_video(self):
         # validation should be more strict here, spaces in file names
@@ -64,18 +104,18 @@ class Encode(object):
         if len(sys.argv) < 2:
             self.error(0)
 
-        self._source = sys.argv[1]
+        self.source = sys.argv[1]
 
         # ffprobe cannot read filenames with spaces
-        if ' ' in self._source:
-            self.error(5, self._source)
-        elif not os.path.isfile(self._source):
-            self.error(1, self._source)
+        if ' ' in self.source:
+            self.error(5, self.source)
+        elif not os.path.isfile(self.source):
+            self.error(1, self.source)
         
     def _init_defaults(self):
         # changes resolutions and bit rates according to what encoding
         # the video already has
-        self._data = ffprobe(self._source)
+        self._data = ffprobe(self.source)
         self._cur        = []
         self._isVideo    = False
         self._resolution = (0,0)
@@ -90,18 +130,18 @@ class Encode(object):
                 break #break on first video stream
 
         if not self._isVideo:
-            self.error(4, self._source)
+            self.error(4, self.source)
 
         if self._bitrate == 0:
-            err = ','.join([str(x[0])+'k/s' for x in self._options])
-              # converts list of bitrates from `self._options` to strings:
+            err = ','.join([str(x[0])+'k/s' for x in self.options])
+              # converts list of bitrates from `self.options` to strings:
               # [[2000, 1920, 1080],[1200, 1280, 720]] -> '2000ks,1200k/s'
             self.error(3, ['bitrate',  err])
             self._set_bit = False
 
         if self._resolution == (0,0):
-            err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self._options])
-              # converts list of x/y's from `self._options` to strings:
+            err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self.options])
+              # converts list of x/y's from `self.options` to strings:
               # [[2000, 1920, 1080],[1200, 1280, 720]] -> '1920x1080,1280x720'
             self.error(3, ['resolution', err])
             self._set_res = False
@@ -109,7 +149,7 @@ class Encode(object):
             self._aspect_ratio = self._resolution[0]/self._resolution[1]
 
         if self._set_bit or self._set_res:
-            for encoding in self._options:
+            for encoding in self.options:
 
                 if self._set_bit:
                     if self._bitrate < encoding[0]*1000:
