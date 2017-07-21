@@ -2,12 +2,12 @@
 from __future__ import division
 from ffprobe import FFProbe as ffprobe
 import subprocess as subproc
-import sys, os, signal, tempfile
+import sys, os, signal, tempfile, re
 
 def main(encoder):
     encoder()
 
-    print 'Encoding Completed'
+    print '\nEncoding Completed'
     sys.exit()
 
 class Encoder(object):
@@ -15,7 +15,8 @@ class Encoder(object):
         print 'Starting encoder'
         self.temp_files = []
         self.cmds       = []
-
+        self.out        = None
+        
         self.error = Error()
 
         self._set_bit = True
@@ -44,9 +45,9 @@ class Encoder(object):
                         outfile_cancel(f)
                         self.error(2, msg)
                     else:
-                        out_name = self.source.split('.')
-                        out_name[-1] = '%s.%s'%(opts[2], ext)
-                        outfile_commit(f, '.'.join(out_name))
+                        if self.out == None:
+                            self.out = '%s.%s.%s'%(self.parsed, opts[2], ext)
+                        outfile_commit(f, self.out)
                         print 'Done'
                 except(KeyboardInterrupt, SystemExit):
                     print "\nImmediate exit requested\n\ncleaning..."
@@ -95,6 +96,8 @@ class Encoder(object):
         elif not os.path.isfile(self.source):
             self.error(1, self.source)
 
+        self.parsed, self.ext = parse_filename(self.source)
+            
     def _init_defaults(self):
         self._data = ffprobe(self.source)
         self._isVideo    = False
@@ -159,6 +162,21 @@ class Error(object):
 
         if self._errors[id][1]:
             sys.exit()
+
+def parse_filename(filename):
+    name = filename
+    m = re.search(r'(\.\w+)$', name)
+    if m:
+        ext = m.group(1)[1:]
+        name = name[:m.start(1)]
+    else:
+        ext = ''
+    name = name.lower()
+    name = re.sub('\W+', '_', name)
+    name = re.sub('_+', '_', name)
+    name = re.sub('^_', '', name)
+    name = re.sub('_$', '', name)
+    return name, ext
 
 def outfile_open(**kwargs):
     if 'mode' not in kwargs: kwargs['mode'] = 'wb'
