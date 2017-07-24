@@ -16,16 +16,17 @@ class Encoder(object):
         print 'Starting encoder'
         self.temp_files = []
         self.cmds       = []
+        self.formats    = []
         self.source     = args.i
         self.out        = args.o
-        
+
         self.out_dir = args.d if args.d else './webencode_outfile/'
         if self.out_dir[-1] != '/': self.out_dir += '/'
 
         print "Saving to", self.out_dir
-        
+
         self.error = Error()
-        
+
         self._set_bit = True
         self._set_res = True
 
@@ -34,14 +35,20 @@ class Encoder(object):
             [1200, 1280, 720 ],
             [700,  853, 480  ]
         ]
-        self.formats = ['mp4', 'webm', 'ogg']
+
+        if args.f:
+            if len(args.f) > 3: self.error(7)
+            for x in args.f:
+                if x in ['mp4', 'webm', 'ogg']:
+                    self.formats.append(x)
+                else: self.error(8, x)
+        else: self.formats = ['mp4', 'webm', 'ogg']
 
         self._get_video()
         self._init_defaults()
 
     def __call__(self):
         if not os.path.isdir(self.out_dir):
-            print "\nMaking '%s'"%(self.out_dir)
             os.makedirs(self.out_dir)
 
         for opts in self.options:
@@ -56,7 +63,6 @@ class Encoder(object):
                         outfile_cancel(f)
                         self.error(2, msg)
                     else:
-                        if not self.out: self.out = self.parsed
                         self.output = '%s.%s.%s'%(self.out, opts[2], ext)
                         outfile_commit(f, self.out_dir+self.output)
                         print "Done"
@@ -103,11 +109,11 @@ class Encoder(object):
             self.error(5, self.source)
         elif not os.path.isfile(self.source):
             self.error(1, self.source)
-            
+
         self.parsed, self.ext = parse_filename(self.source)
 
-        self.out, temp = parse_filename(self.out) if self.out else self.parsed
-        
+        self.out, temp = parse_filename(self.out) if self.out else (self.parsed, '')
+
     def _init_defaults(self):
         self._data = ffprobe(self.source)
         self._isVideo    = False
@@ -149,17 +155,18 @@ class Encoder(object):
                     if encoding[1]%2 != 0: encoding[1] += 1 # make sure x/y
                     if encoding[2]%2 != 0: encoding[2] += 1 # vals are even
 
-
 class Error(object):
     def __init__(self):
         self._errors = [
-            ("Missing filename argument '-i', 'webencode -h' for help", True),#------#0
-            ("Could not locate file '{}'", True),#-----------------------------------#1
-            ("Could not transcode to {}", False),#-----------------------------------#2
-            ("Could not determine {} of video - exectuing with defaults: {}", False),#3
-            ("Missing video stream, is '{}' not a video?", True),#-------------------#4
-            ("'{}' is an invalid name, use only names without whitespace", True),#---#5
-            ("Internal error, exiting...", True)#------------------------------------#6
+            ("Missing filename argument '-i', 'webencode -h' for help", True),#----------0
+            ("Could not locate file '{}'", True),#---------------------------------------1
+            ("Could not transcode to {}", False),#---------------------------------------2
+            ("Could not determine {} of video - exectuing with defaults: {}", False),#---3
+            ("Missing video stream, is '{}' not a video?", True),#-----------------------4
+            ("'{}' is an invalid name, use only names without whitespace", True),#-------5
+            ("Internal error, exiting...", True),#---------------------------------------6
+            ("'-f' accepts up to 3 arguments, 'webencode -h' for more details", False),#-7
+            ("'{}' is an invalid extension, skipping", False)#---------------------------8
         ]
 
     def __call__(self, id, insert=None):
@@ -168,7 +175,7 @@ class Error(object):
 
         msg = self._errors[id][0]; msg = msg.format(*insert) if insert else msg
 
-        print '\nERROR: %s\n' % msg
+        print '\nERROR: %s' % msg
 
         if self._errors[id][1]:
             sys.exit()
@@ -206,6 +213,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", metavar="input", help="Specify input video file")
     parser.add_argument("-o", metavar="output", help="Specify base output file name: name.x-res.extension")
     parser.add_argument("-d", metavar="dir", help="Specify directory to output to")
+    parser.add_argument("-f", nargs='+', metavar="formats", help="Specify which formats to encode to: mp4|webm|ogg")
 
     args = parser.parse_args()
 
