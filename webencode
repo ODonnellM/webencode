@@ -26,7 +26,6 @@ class Encoder(object):
         print "Saving to", self.out_dir
 
         self.error = Error()
-
         self._set_bit = True
         self._set_res = True
 
@@ -42,8 +41,12 @@ class Encoder(object):
                 if x in ['mp4', 'webm', 'ogg']:
                     self.formats.append(x)
                 else: self.error(8, x)
+            if not len(self.formats): self.error(9)
         else: self.formats = ['mp4', 'webm', 'ogg']
 
+        if args.y: self.overwrite = True
+        else: self.overwrite = False
+        
         self._get_video()
         self._init_defaults()
 
@@ -53,6 +56,7 @@ class Encoder(object):
 
         for opts in self.options:
             for idx, ext in enumerate(self.formats):
+                resp = None
                 msg = "'{}' - {} - {}k/s".format(ext, '%sx%s'%(opts[1],opts[2]), opts[0])
                 print '\nEncoding to %s'%(msg)
                 f = outfile_open()
@@ -63,9 +67,22 @@ class Encoder(object):
                         outfile_cancel(f)
                         self.error(2, msg)
                     else:
-                        self.output = '%s.%s.%s'%(self.out, opts[2], ext)
-                        outfile_commit(f, self.out_dir+self.output)
-                        print "Done"
+                        self.output = '%s%s.%s.%s'%(self.out_dir, self.out, opts[2], ext)
+                        if os.path.isfile(self.output):
+                            self.error(10, self.output)
+                            if not self.overwrite:
+                                while True:
+                                    print "Would you like to overwrite the file? (y/n)"
+                                    resp = str(raw_input()).lower()
+                                    if resp == 'y' or resp == 'n': break
+                            else: print "Flag set, overwriting..."
+
+                            if resp == 'y' or self.overwrite:
+                                outfile_commit(f, self.output)
+                            else:
+                                outfile_cancel(f)
+                                print "Not overwritten....continuing"
+                        else: outfile_commit(f, self.output)
                 except(KeyboardInterrupt, SystemExit):
                     print "\nImmediate exit requested\n\ncleaning..."
                     outfile_cancel(f)
@@ -111,7 +128,6 @@ class Encoder(object):
             self.error(1, self.source)
 
         self.parsed, self.ext = parse_filename(self.source)
-
         self.out, temp = parse_filename(self.out) if self.out else (self.parsed, '')
 
     def _init_defaults(self):
@@ -165,8 +181,10 @@ class Error(object):
             ("Missing video stream, is '{}' not a video?", True),#-----------------------4
             ("'{}' is an invalid name, use only names without whitespace", True),#-------5
             ("Internal error, exiting...", True),#---------------------------------------6
-            ("'-f' accepts up to 3 arguments, 'webencode -h' for more details", False),#-7
-            ("'{}' is an invalid extension, skipping", False)#---------------------------8
+            ("'-f' expects up to 3 arguments, 'webencode -h' for more details", False),#-7
+            ("'{}' is an invalid extension, skipping", False),#--------------------------8
+            ("No known formats found in '-f', nothing to encode....exiting", True),#-----9
+            ("'{}' already exists", False)#---------------------------------------------10
         ]
 
     def __call__(self, id, insert=None):
@@ -174,12 +192,11 @@ class Error(object):
             insert = [insert]
 
         msg = self._errors[id][0]; msg = msg.format(*insert) if insert else msg
-
-        print '\nERROR: %s' % msg
+        print '\nERROR: %s' %(msg)
 
         if self._errors[id][1]:
             sys.exit()
-
+            
 def parse_filename(filename):
     name = filename
     m = re.search(r'(\.\w+)$', name)
@@ -214,7 +231,8 @@ if __name__ == "__main__":
     parser.add_argument("-o", metavar="output", help="Specify base output file name: name.x-res.extension")
     parser.add_argument("-d", metavar="dir", help="Specify directory to output to")
     parser.add_argument("-f", nargs='+', metavar="formats", help="Specify which formats to encode to: mp4|webm|ogg")
-
+    parser.add_argument("-y", help="Specify force overwrite", action="store_true")
+    
     args = parser.parse_args()
 
     main(Encoder(args))
