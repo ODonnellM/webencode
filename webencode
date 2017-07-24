@@ -46,7 +46,7 @@ class Encoder(object):
 
         if args.y: self.overwrite = True
         else: self.overwrite = False
-        
+
         self._get_video()
         self._init_defaults()
 
@@ -196,7 +196,7 @@ class Error(object):
 
         if self._errors[id][1]:
             sys.exit()
-            
+
 def parse_filename(filename):
     name = filename
     m = re.search(r'(\.\w+)$', name)
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     parser.add_argument("-d", metavar="dir", help="Specify directory to output to")
     parser.add_argument("-f", nargs='+', metavar="formats", help="Specify which formats to encode to: mp4|webm|ogg")
     parser.add_argument("-y", help="Specify force overwrite", action="store_true")
-    
+
     args = parser.parse_args()
 
     main(Encoder(args))
