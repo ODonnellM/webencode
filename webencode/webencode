@@ -1,0 +1,238 @@
+#!/usr/bin/python
+from __future__ import division
+from ffprobe import FFProbe as ffprobe
+import subprocess as subproc
+import sys, os, signal, tempfile, re
+import argparse
+
+def main(encoder):
+    encoder()
+
+    print '\nEncoding Completed'
+    sys.exit()
+
+class Encoder(object):
+    def __init__(self, args):
+        print 'Starting encoder'
+        self.temp_files = []
+        self.cmds       = []
+        self.formats    = []
+        self.source     = args.i
+        self.out        = args.o
+
+        self.out_dir = args.d if args.d else './webencode_outfile/'
+        if self.out_dir[-1] != '/': self.out_dir += '/'
+
+        print "Saving to", self.out_dir
+
+        self.error = Error()
+        self._set_bit = True
+        self._set_res = True
+
+        self.options = [
+            [2000, 1920, 1080],
+            [1200, 1280, 720 ],
+            [700,  853, 480  ]
+        ]
+
+        if args.f:
+            if len(args.f) > 3: self.error(7)
+            for x in args.f:
+                if x in ['mp4', 'webm', 'ogg']:
+                    self.formats.append(x)
+                else: self.error(8, x)
+            if not len(self.formats): self.error(9)
+        else: self.formats = ['mp4', 'webm', 'ogg']
+
+        if args.y: self.overwrite = True
+        else: self.overwrite = False
+
+        self._get_video()
+        self._init_defaults()
+
+    def __call__(self):
+        if not os.path.isdir(self.out_dir):
+            os.makedirs(self.out_dir)
+
+        for opts in self.options:
+            for idx, ext in enumerate(self.formats):
+                resp = None
+                msg = "'{}' - {} - {}k/s".format(ext, '%sx%s'%(opts[1],opts[2]), opts[0])
+                print '\nEncoding to %s'%(msg)
+                f = outfile_open()
+                try:
+                    cmd = self._arg_builder(opts, ext, f.name)
+                    exit_code = subproc.Popen(cmd).wait()
+                    if exit_code != 0:
+                        outfile_cancel(f)
+                        self.error(2, msg)
+                    else:
+                        self.output = '%s%s.%s.%s'%(self.out_dir, self.out, opts[2], ext)
+                        if os.path.isfile(self.output):
+                            self.error(10, self.output)
+                            if not self.overwrite:
+                                while True:
+                                    print "Would you like to overwrite the file? (y/n)"
+                                    resp = str(raw_input()).lower()
+                                    if resp == 'y' or resp == 'n': break
+                            else: print "Flag set, overwriting..."
+
+                            if resp == 'y' or self.overwrite:
+                                outfile_commit(f, self.output)
+                            else:
+                                outfile_cancel(f)
+                                print "Not overwritten....continuing"
+                        else: outfile_commit(f, self.output)
+                except(KeyboardInterrupt, SystemExit):
+                    print "\nImmediate exit requested\n\ncleaning..."
+                    outfile_cancel(f)
+                    print "exiting..."
+                    sys.exit()
+                except:
+                    outfile_cancel(f)
+                    self.error(2, msg)
+
+    def _arg_builder(self, opts, ext, f):
+        self.args = ['ffmpeg', '-loglevel', '24',
+                      '-i', self.source, '-c:v']
+        if ext == 'mp4':
+            self.args.extend(['libx264'])
+        elif ext == 'webm':
+            self.args.extend(['libvpx'])
+        elif ext == 'ogg':
+            self.args.extend(['libtheora'])
+        else: self.error(6)
+
+        self.args.extend(['-c:a'])
+
+        if ext == 'mp4':
+            self.args.extend(['aac', '-strict', '-2'])
+        else: self.args.extend(['libvorbis'])
+
+        self.args.extend([
+            '-b:v', '%sk'%(opts[0]), '-b:a', '128k',
+            '-s', '%sx%s'%(opts[1],opts[2]), '-f', ext
+        ])
+
+        if ext == 'mp4': self.args.extend(['-crf', '23'])
+
+        self.args.extend(['-y', f, '-hide_banner'])
+        return self.args
+
+    def _get_video(self):
+        if not self.source:
+            self.error(0)
+        elif ' ' in self.source:
+            self.error(5, self.source)
+        elif not os.path.isfile(self.source):
+            self.error(1, self.source)
+
+        self.parsed, self.ext = parse_filename(self.source)
+        self.out, temp = parse_filename(self.out) if self.out else (self.parsed, '')
+
+    def _init_defaults(self):
+        self._data = ffprobe(self.source)
+        self._isVideo    = False
+        self._resolution = (0,0)
+        self._bitrate    = 0
+
+        for stream in self._data.streams:
+            if stream.isVideo():
+                self._isVideo    = True
+                self._resolution = stream.frameSize()
+                self._bitrate    = stream.bitrate()
+
+                break #break on first video stream
+
+        if not self._isVideo:
+            self.error(4, self.source)
+
+        if self._bitrate == 0:
+            err = ','.join([str(x[0])+'k/s' for x in self.options])
+            self.error(3, ['bitrate',  err])
+            self._set_bit = False
+
+        if self._resolution == (0,0):
+            err = ','.join(['x'.join([str(x[1]), str(x[2])]) for x in self.options])
+            self.error(3, ['resolution', err])
+            self._set_res = False
+        else:
+            self._aspect_ratio = self._resolution[0]/self._resolution[1]
+
+        if self._set_bit or self._set_res:
+            for encoding in self.options:
+
+                if self._set_bit:
+                    if self._bitrate < encoding[0]*1000:
+                        encoding[0] = self._bitrate//1000
+
+                if self._set_res:
+                    encoding[1] = int(encoding[2] * self._aspect_ratio)
+                    if encoding[1]%2 != 0: encoding[1] += 1 # make sure x/y
+                    if encoding[2]%2 != 0: encoding[2] += 1 # vals are even
+
+class Error(object):
+    def __init__(self):
+        self._errors = [
+            ("Missing filename argument '-i', 'webencode -h' for help", True),#----------0
+            ("Could not locate file '{}'", True),#---------------------------------------1
+            ("Could not transcode to {}", False),#---------------------------------------2
+            ("Could not determine {} of video - exectuing with defaults: {}", False),#---3
+            ("Missing video stream, is '{}' not a video?", True),#-----------------------4
+            ("'{}' is an invalid name, use only names without whitespace", True),#-------5
+            ("Internal error, exiting...", True),#---------------------------------------6
+            ("'-f' expects up to 3 arguments, 'webencode -h' for more details", False),#-7
+            ("'{}' is an invalid extension, skipping", False),#--------------------------8
+            ("No known formats found in '-f', nothing to encode....exiting", True),#-----9
+            ("'{}' already exists", False)#---------------------------------------------10
+        ]
+
+    def __call__(self, id, insert=None):
+        if insert and (type(insert) is not list and type(insert) is not tuple):
+            insert = [insert]
+
+        msg = self._errors[id][0]; msg = msg.format(*insert) if insert else msg
+        print '\nERROR: %s' %(msg)
+
+        if self._errors[id][1]:
+            sys.exit()
+
+def parse_filename(filename):
+    name = filename
+    m = re.search(r'(\.\w+)$', name)
+    if m:
+        ext = m.group(1)[1:]
+        name = name[:m.start(1)]
+    else:
+        ext = ''
+    name = name.lower()
+    name = re.sub('\W+', '_', name)
+    name = re.sub('_+', '_', name)
+    name = re.sub('^_', '', name)
+    name = re.sub('_$', '', name)
+    return name, ext
+
+def outfile_open(**kwargs):
+    if 'mode' not in kwargs: kwargs['mode'] = 'wb'
+    if 'dir'  not in kwargs: kwargs['dir']  = '.'
+    kwargs['delete'] = False
+    return tempfile.NamedTemporaryFile(**kwargs)
+
+def outfile_commit(temp_file, target_name, chmod=0644):
+    if chmod: os.chmod(temp_file.name, chmod)
+    os.rename(temp_file.name, target_name)
+
+def outfile_cancel(temp_file):
+    os.unlink(temp_file.name)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", metavar="input", help="Specify input video file")
+    parser.add_argument("-o", metavar="output", help="Specify base output file name: name.x-res.extension")
+    parser.add_argument("-d", metavar="dir", help="Specify directory to output to")
+    parser.add_argument("-f", nargs='+', metavar="formats", help="Specify which formats to encode to: mp4|webm|ogg")
+    parser.add_argument("-y", help="Specify force overwrite", action="store_true")
+
+    args = parser.parse_args()
+
+    main(Encoder(args))
