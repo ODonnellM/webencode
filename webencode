@@ -3,6 +3,7 @@ from __future__ import division
 from ffprobe import FFProbe as ffprobe
 import subprocess as subproc
 import sys, os, signal, tempfile, re
+import argparse
 
 def main(encoder):
     encoder()
@@ -11,14 +12,20 @@ def main(encoder):
     sys.exit()
 
 class Encoder(object):
-    def __init__(self):
+    def __init__(self, args):
         print 'Starting encoder'
         self.temp_files = []
         self.cmds       = []
-        self.out        = None
+        self.source     = args.i
+        self.out        = args.o
+        
+        self.out_dir = args.d if args.d else './webencode_outfile/'
+        if self.out_dir[-1] != '/': self.out_dir += '/'
+
+        print "Saving to", self.out_dir
         
         self.error = Error()
-
+        
         self._set_bit = True
         self._set_res = True
 
@@ -33,6 +40,10 @@ class Encoder(object):
         self._init_defaults()
 
     def __call__(self):
+        if not os.path.isdir(self.out_dir):
+            print "\nMaking '%s'"%(self.out_dir)
+            os.makedirs(self.out_dir)
+
         for opts in self.options:
             for idx, ext in enumerate(self.formats):
                 msg = "'{}' - {} - {}k/s".format(ext, '%sx%s'%(opts[1],opts[2]), opts[0])
@@ -45,10 +56,10 @@ class Encoder(object):
                         outfile_cancel(f)
                         self.error(2, msg)
                     else:
-                        if self.out == None:
-                            self.out = '%s.%s.%s'%(self.parsed, opts[2], ext)
-                        outfile_commit(f, self.out)
-                        print 'Done'
+                        if not self.out: self.out = self.parsed
+                        self.output = '%s.%s.%s'%(self.out, opts[2], ext)
+                        outfile_commit(f, self.out_dir+self.output)
+                        print "Done"
                 except(KeyboardInterrupt, SystemExit):
                     print "\nImmediate exit requested\n\ncleaning..."
                     outfile_cancel(f)
@@ -86,18 +97,17 @@ class Encoder(object):
         return self.args
 
     def _get_video(self):
-        if len(sys.argv) < 2:
+        if not self.source:
             self.error(0)
-
-        self.source = sys.argv[1]
-        # ffprobe cannot read filenames with spaces
-        if ' ' in self.source:
+        elif ' ' in self.source:
             self.error(5, self.source)
         elif not os.path.isfile(self.source):
             self.error(1, self.source)
-
-        self.parsed, self.ext = parse_filename(self.source)
             
+        self.parsed, self.ext = parse_filename(self.source)
+
+        self.out, temp = parse_filename(self.out) if self.out else self.parsed
+        
     def _init_defaults(self):
         self._data = ffprobe(self.source)
         self._isVideo    = False
@@ -143,7 +153,7 @@ class Encoder(object):
 class Error(object):
     def __init__(self):
         self._errors = [
-            ("Missing filename argument", True),#------------------------------------#0
+            ("Missing filename argument '-i', 'webencode -h' for help", True),#------#0
             ("Could not locate file '{}'", True),#-----------------------------------#1
             ("Could not transcode to {}", False),#-----------------------------------#2
             ("Could not determine {} of video - exectuing with defaults: {}", False),#3
@@ -192,4 +202,11 @@ def outfile_cancel(temp_file):
     os.unlink(temp_file.name)
 
 if __name__ == "__main__":
-    main(Encoder())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", metavar="input", help="Specify input video file")
+    parser.add_argument("-o", metavar="output", help="Specify base output file name: name.x-res.extension")
+    parser.add_argument("-d", metavar="dir", help="Specify directory to output to")
+
+    args = parser.parse_args()
+
+    main(Encoder(args))
