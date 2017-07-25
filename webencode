@@ -17,6 +17,7 @@ class Encoder(object):
         self.temp_files = []
         self.cmds       = []
         self.formats    = []
+
         self.source     = args.i
         self.out        = args.o
 
